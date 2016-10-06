@@ -1,0 +1,160 @@
+```
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use Data::Dumper;
+
+#####
+#This program will identify if the transcript is assembled in the right order.
+############
+#blast format 6
+#qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore
+############
+#hash storage order
+#0=sseqid; 1=qsatart; 2=qend; 3=sstard; 4= send; 5=evalue; 6=bitsore; 7=forward(1)/reverse(-1); 8=length;
+############
+#progress
+#The current script can compare fragments and see if it is 
+############
+#improvement needed
+#done: foreach loop to compare the new fragment to all the fragment store in the hash
+#done: when have overlap and extrapart<3, compare the e-value, keep the one with higher e-value
+#>>>question: when to keep to one with lower e-value?
+#cut off for e-value
+#order of the chromosome; the orientation of the gene(exons, individual exon) (forward or reverse)
+#set the cut off for the extra part of the overlapping fragment = 3;
+#special overlapping case: when    
+
+#open the input file
+#my $infile = "/Users/lenduensis/Desktop/XueSS/perl script/testfile100";
+my $infile = "C:/Users/Sarah/Desktop/Perl Practice/testfile.txt"; 
+open(INPUT,"<", "$infile") or die "could not open the input file";
+
+#store the fragment information in a hash: seqid, sseqid, qstart, qend, sstart, send, evalue, bitscore
+my @line;
+my %temptranscript_hash;
+my %transcript_hash;
+my $numfragment = 0;
+
+while ( my $line = <INPUT>) {
+	chomp($line);
+	@line = split (/\s+/,$line); #split the line with spaces (\s = space; and \s+ = more than one spece);
+		
+	#compare new line (%temptranscript_hash) and old line (%transcript_hash)
+	if (exists $transcript_hash{$line[0]}){ #if the transcript with seqid already exist, assign it to a temperary hash for later comparison
+		%temptranscript_hash =(); #reset/empty %temptranscript 
+		$temptranscript_hash{$line[0]}[0]= $line[1]; #seqid
+		$temptranscript_hash{$line[0]}[1]= $line[6]; #qstart
+		$temptranscript_hash{$line[0]}[2]= $line[7]; #qend
+		$temptranscript_hash{$line[0]}[3] = $line[8]; #sstart
+		$temptranscript_hash{$line[0]}[4]= $line[9]; #send
+		$temptranscript_hash{$line[0]}[5]= $line[10]; #evalue
+				
+		#store qend and qstart in variable for easier visual
+		my $tempqstart = $temptranscript_hash{$line[0]}[1];
+		my $tempqend = $temptranscript_hash{$line[0]}[2];
+						
+		foreach my $fragt (sort keys %{$transcript_hash{$line[0]}}){ #compare the new fragment to all the sotred fragment (with same qseqid) in hash;
+		#asign value of qend and qstart to scalar variables for easier visual
+		my $tqstart = $transcript_hash{$line[0]}{$fragt}[1];
+		my $tqend = $transcript_hash{$line[0]}{$fragt}[2];
+		
+		if (($tqstart <= $tempqstart)&& ($tqend >= $tempqend)){ #fragment comparison case#1: repeated region; dont store it;
+		    	%temptranscript_hash =(); #emptying temp_hash 
+		    	$tqstart = $tqend = $tempqstart =$tempqend = undef;
+		    	last; #exiting the foreach loop
+		    }
+		  
+		elsif ((($tqstart <= $tempqstart)&&($tqend <= $tempqend)) || #some overlap with the front part of the temp fragment
+		     (($tqstart >= $tempqstart)&&($tqend >= $tempqend)) || #some overlap with the end part of the temp fragment
+		    (($tqstart >= $tempqstart)&&($tqend <= $tempqend))){ # fragment comparison case2: some overlap region; compare e-value? sstart and send?;                            
+                            #check the non-overlapping part of the temp fragment, if it is smaller than 3bp, dont store the temp fragment; 
+                                if ((( ($tqend > $tempqend)&&($tqstart - $tempqstart)<=3)) ||
+                                        ((($tqstart < $tempqstart)&&($tempqend - $tqend) <=3))) {
+                                        %temptranscript_hash = ();
+                                        last;
+                                }
+                            
+                            #store the fragment-id of overlapped fragment for special fragment comparison     
+                                if ($tqstart < $tempqstart) {
+                                    $temptranscript_hash{$line[0]}{"FrontOverlapping"}[1] = $fragt;
+                                }
+                                elsif ($tqstart > $tempqstart){
+                                     $temptranscript_hash{$line[0]}{"EndOverlapping"}[1] = $fragt;
+                                }
+                                else {
+                                    $temptranscript_hash{$line[0]}{"FrontOverlapping"} =();
+                                    $temptranscript_hash{$line[0]}{"EndOverlapping"} =();
+                                }
+                            
+                            #call subroutine check_SpecialOverlapping;
+                            #do nothing if it passed all the checks, add the fragment after the foreach loop if temp_hash still exist
+		     }
+		
+		elsif ((($tqstart >= $tempqstart)&&($tqstart >= $tempqend)) ||
+		    (($tqend <= $tempqstart)&&($tqend <= $tempqend))) { #no overlap at all, add the fragment to hash; 
+		        $numfragment = 1;
+		        addfragment (@line);
+		        %temptranscript_hash =(); #empty temp_hash
+		        last;	#exit the foreach loop		
+                    }
+                }
+	}
+	else { #if the transcript with seqid does not exist, store it. 
+	$numfragment = 1;
+	addfragment (@line);
+	print "the qend for the first fragment stored in the hash with qseqid ", $line[0], "is: ", $transcript_hash{$line[0]}{"fragment$numfragment"}[4], "\n"; #check if the hash if funtioning
+	}
+	
+	#call subroutine check_special overlapping to 
+	if (!keys %{temptranscript_hash{$line[0]}{"FrontOverlapping"}})
+	
+	if (!keys %temptranscript_hash){
+	    }
+	else {	    
+	     $numfragment ++;
+             addfragment (@line);
+             }
+}	
+close INPUT;
+
+
+foreach my $qseqid (sort keys %transcript_hash){ #print the content stored in the transcript_hash to the screen; can modify to output the result to a output file
+    foreach my $fragmentid (sort keys %{$transcript_hash{$qseqid}}){
+          print "$qseqid        $fragmentid     ";
+        
+        foreach my $i (0..$#{$transcript_hash{$qseqid}{$fragmentid}}) {
+          print $transcript_hash{$qseqid}{$fragmentid}[$i], "\t";
+          }
+        
+         print "\n";
+    }
+}
+
+sub addfragment {
+     #hash storage order: 0=sseqid; 1=qsatart; 2=qend; 3=sstard; 4= send; 5=evalue; 6=bitsore; 7=forward(1)/reverse(-1); 8=length;
+     $transcript_hash{$line[0]}{"fragment$numfragment"}[0]= $line[1]; 
+    $transcript_hash{$line[0]}{"fragment$numfragment"}[1]= $line[6]; 
+    $transcript_hash{$line[0]}{"fragment$numfragment"}[2]= $line[7]; 
+    $transcript_hash{$line[0]}{"fragment$numfragment"}[3] = $line[8];
+    $transcript_hash{$line[0]}{"fragment$numfragment"}[4]= $line[9];
+    $transcript_hash{$line[0]}{"fragment$numfragment"}[5]= $line[10];
+     $transcript_hash{$line[0]}{"fragment$numfragment"}[6]= $line[11];
+     $transcript_hash{$line[0]}{"fragment$numfragment"}[8]= $line[3];
+    
+    if ($transcript_hash{$line[0]}{"fragment$numfragment"}[3] < $transcript_hash{$line[0]}{"fragment$numfragment"}[4]){ #determine the orientation of the fragment: if forward = 1; if reverse = -1;
+        $transcript_hash{$line[0]}{"fragment$numfragment"}[7] = 1;
+    }
+    else {
+        $transcript_hash{$line[0]}{"fragment$numfragment"}[7] = -1;
+    }
+    
+    return %transcript_hash;
+}
+
+# sub check_SpecialOverlapping {
+    
+# }
+```
